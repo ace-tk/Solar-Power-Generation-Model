@@ -42,7 +42,3 @@ wheels/
 # Streamlit
 .streamlit/
 
-# Large model files
-models/random_forest_model.pkl
-.gitattributes
-
