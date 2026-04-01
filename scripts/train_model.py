@@ -1,91 +1,131 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+"""Training pipeline for solar power generation forecasting.
+
+Loads generation and weather CSVs, engineers temporal and lag features,
+trains Linear Regression (scaled) and Random Forest baselines, and saves
+both models along with their evaluation metrics.
+"""
+
+import json
 import pickle
+from pathlib import Path
 
-# Load datasets
-try:
-    gen_df = pd.read_csv('data/Plant_1_Generation_Data.csv')
-    weather_df = pd.read_csv('data/Plant_1_Weather_Sensor_Data.csv')
-except FileNotFoundError as e:
-    print(f"Error: Required CSV file not found - {e}")
-    exit(1)
-except Exception as e:
-    print(f"Error loading data: {e}")
-    exit(1)
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import StandardScaler
 
-# Convert to datetime
-gen_df['DATE_TIME'] = pd.to_datetime(gen_df['DATE_TIME'])
-weather_df['DATE_TIME'] = pd.to_datetime(weather_df['DATE_TIME'])
+GEN_PATH = "data/Plant_1_Generation_Data.csv"
+WEATHER_PATH = "data/Plant_1_Weather_Sensor_Data.csv"
+MODELS_DIR = Path("models")
 
-# Sort by time
-gen_df = gen_df.sort_values('DATE_TIME')
-weather_df = weather_df.sort_values('DATE_TIME')
+FEATURES = [
+    "AMBIENT_TEMPERATURE",
+    "MODULE_TEMPERATURE",
+    "IRRADIATION",
+    "HOUR",
+    "MONTH",
+    "DAY_OF_WEEK",
+    "lag_1",
+    "rolling_mean_3",
+]
+TARGET = "AC_POWER"
 
-# Merge using merge_asof
-merged_df = pd.merge_asof(gen_df, weather_df, on='DATE_TIME', direction='nearest')
 
-# Remove zero AC power (night periods)
-merged_df = merged_df[merged_df['AC_POWER'] > 0]
+def load_data(gen_path: str, weather_path: str) -> pd.DataFrame:
+    """Load generation + weather CSVs, sort by DATE_TIME, and merge nearest-in-time."""
+    gen_df = pd.read_csv(gen_path)
+    weather_df = pd.read_csv(weather_path)
 
-# Remove duplicates
-merged_df = merged_df.drop_duplicates()
+    gen_df["DATE_TIME"] = pd.to_datetime(gen_df["DATE_TIME"])
+    weather_df["DATE_TIME"] = pd.to_datetime(weather_df["DATE_TIME"])
 
-# Feature engineering
-merged_df['HOUR'] = merged_df['DATE_TIME'].dt.hour
-merged_df['MONTH'] = merged_df['DATE_TIME'].dt.month
-merged_df['DAY_OF_WEEK'] = merged_df['DATE_TIME'].dt.dayofweek
+    gen_df = gen_df.sort_values("DATE_TIME")
+    weather_df = weather_df.sort_values("DATE_TIME")
 
-# Temporal features
-merged_df['lag_1'] = merged_df['AC_POWER'].shift(1)
-merged_df['rolling_mean_3'] = merged_df['AC_POWER'].rolling(window=3).mean()
+    merged = pd.merge_asof(gen_df, weather_df, on="DATE_TIME", direction="nearest")
+    merged = merged[merged[TARGET] > 0]
+    merged = merged.drop_duplicates()
+    return merged
 
-# Drop NaN
-merged_df = merged_df.dropna()
 
-# Select features
-features = ['AMBIENT_TEMPERATURE', 'MODULE_TEMPERATURE', 'IRRADIATION', 
-            'HOUR', 'MONTH', 'DAY_OF_WEEK', 'lag_1', 'rolling_mean_3']
-X = merged_df[features]
-y = merged_df['AC_POWER']
+def engineer_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Add HOUR/MONTH/DAY_OF_WEEK, lag_1, rolling_mean_3; drop rows with NaN lags."""
+    df = df.copy()
+    df["HOUR"] = df["DATE_TIME"].dt.hour
+    df["MONTH"] = df["DATE_TIME"].dt.month
+    df["DAY_OF_WEEK"] = df["DATE_TIME"].dt.dayofweek
+    df["lag_1"] = df[TARGET].shift(1)
+    df["rolling_mean_3"] = df[TARGET].rolling(window=3).mean()
+    df = df.dropna()
+    return df, FEATURES
 
-# Time-series split (no shuffle)
-split_idx = int(len(X) * 0.8)
-X_train, X_test = X[:split_idx], X[split_idx:]
-y_train, y_test = y[:split_idx], y[split_idx:]
 
-# Scale features for Linear Regression
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+def time_series_split(X: pd.DataFrame, y: pd.Series, test_frac: float = 0.2):
+    """Chronological split (no shuffle) preserving temporal order."""
+    split_idx = int(len(X) * (1 - test_frac))
+    return X[:split_idx], X[split_idx:], y[:split_idx], y[split_idx:]
 
-# Train Linear Regression (with scaling)
-lr_model = LinearRegression()
-lr_model.fit(X_train_scaled, y_train)
-lr_pred = lr_model.predict(X_test_scaled)
-print(f"Linear Regression - MAE: {mean_absolute_error(y_test, lr_pred):.2f}, RMSE: {np.sqrt(mean_squared_error(y_test, lr_pred)):.2f}")
 
-# Train Random Forest
-rf_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-rf_model.fit(X_train, y_train)
-rf_pred = rf_model.predict(X_test)
-print(f"Random Forest - MAE: {mean_absolute_error(y_test, rf_pred):.2f}, RMSE: {np.sqrt(mean_squared_error(y_test, rf_pred)):.2f}")
+def _evaluate(y_true, y_pred) -> dict:
+    return {
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+    }
 
-# Save models
-try:
-    with open('models/linear_model.pkl', 'wb') as f:
+
+def train_linear(X_train, y_train, X_test, y_test):
+    """Fit LinearRegression on scaled features; return (model, scaler, metrics)."""
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    model = LinearRegression()
+    model.fit(X_train_scaled, y_train)
+    metrics = _evaluate(y_test, model.predict(X_test_scaled))
+    return model, scaler, metrics
+
+
+def train_random_forest(X_train, y_train, X_test, y_test):
+    """Fit RandomForestRegressor(n_estimators=100); return (model, metrics)."""
+    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    model.fit(X_train, y_train)
+    metrics = _evaluate(y_test, model.predict(X_test))
+    return model, metrics
+
+
+def save_artifacts(lr_model, rf_model, scaler, features, metrics) -> None:
+    """Pickle models/scaler/features and dump metrics.json to MODELS_DIR."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(MODELS_DIR / "linear_model.pkl", "wb") as f:
         pickle.dump(lr_model, f)
-    with open('models/scaler.pkl', 'wb') as f:
+    with open(MODELS_DIR / "scaler.pkl", "wb") as f:
         pickle.dump(scaler, f)
-    with open('models/random_forest_model.pkl', 'wb') as f:
+    with open(MODELS_DIR / "random_forest_model.pkl", "wb") as f:
         pickle.dump(rf_model, f)
-    with open('models/feature_list.pkl', 'wb') as f:
+    with open(MODELS_DIR / "feature_list.pkl", "wb") as f:
         pickle.dump(features, f)
-    print("\nModels saved successfully!")
-except Exception as e:
-    print(f"Error saving models: {e}")
-    exit(1)
+    with open(MODELS_DIR / "metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+
+
+def main() -> None:
+    df = load_data(GEN_PATH, WEATHER_PATH)
+    df, features = engineer_features(df)
+
+    X_train, X_test, y_train, y_test = time_series_split(df[features], df[TARGET])
+
+    lr_model, scaler, lr_metrics = train_linear(X_train, y_train, X_test, y_test)
+    print(f"Linear Regression - MAE: {lr_metrics['mae']:.2f}, RMSE: {lr_metrics['rmse']:.2f}")
+
+    rf_model, rf_metrics = train_random_forest(X_train, y_train, X_test, y_test)
+    print(f"Random Forest    - MAE: {rf_metrics['mae']:.2f}, RMSE: {rf_metrics['rmse']:.2f}")
+
+    metrics = {"linear_regression": lr_metrics, "random_forest": rf_metrics}
+    save_artifacts(lr_model, rf_model, scaler, features, metrics)
+    print("\nModels + metrics.json saved to ./models/")
+
+
+if __name__ == "__main__":
+    main()

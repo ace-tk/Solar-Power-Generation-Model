@@ -1,0 +1,10 @@
+{
+  "linear_regression": {
+    "mae": 17.33,
+    "rmse": 32.09
+  },
+  "random_forest": {
+    "mae": 17.26,
+    "rmse": 32.45
+  }
+}
