@@ -1,5 +1,16 @@
-streamlit
-pandas
-numpy
-scikit-learn
-plotly
+streamlit>=1.40
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+plotly>=5.24
+
+# Milestone 2 - Agentic AI Grid Optimization
+langgraph>=0.2.56
+langchain-google-genai>=2.0.8
+langchain-core>=0.3.25
+faiss-cpu>=1.9
+sentence-transformers>=3.3
+pydantic>=2.10
+reportlab>=4.2
+python-dotenv>=1.0
+matplotlib>=3.9

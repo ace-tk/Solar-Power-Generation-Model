@@ -39,6 +39,12 @@ wheels/
 *.swo
 .DS_Store
 
-# Streamlit
-.streamlit/
+# Streamlit (ignore secrets file only; allow committing theme config)
+.streamlit/secrets.toml
+
+# Environment
+.env
+
+# Local scratch / not for submission
+other_dump/
 
