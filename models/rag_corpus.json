@@ -1,0 +1,112 @@
+[
+  {
+    "text": "## Time-of-use tariff design\nTime-of-use tariffs with a 3x to 5x ratio between peak and off-peak rates motivate consumers to shift flexible loads into midday solar surplus periods. Effective shift is 5-15 percent of residential and 10-25 percent of commercial demand.",
+    "source": "LBNL Demand Response Review",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## Flexible loads suitable for solar-hour shifting\nWater heating, HVAC precooling, EV charging, irrigation pumping, and industrial batch processes are good candidates for shifting into midday high-solar hours. Automated controls achieve 2-4x higher shift than manual programs.",
+    "source": "IEA Energy Efficiency 2022",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## EV charging alignment\nWorkplace EV charging naturally aligns with midday solar. Managed charging programs can defer 60-80 percent of daytime EV load to align with local solar output.",
+    "source": "Rocky Mountain Institute EV Charging",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## Industrial flexibility\nIndustries such as aluminum smelting, chlor-alkali, and data centers can modulate 5-20 percent of load on sub-hourly timescales. Bilateral demand response contracts monetize this without impacting production.",
+    "source": "ACEEE Industrial Demand Response",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## Forecast-informed demand signals\nPublishing day-ahead solar forecasts to demand-response aggregators 24 hours in advance improves participation rates by 30-50 percent versus same-day dispatch signals.",
+    "source": "PJM Demand Response Whitepaper",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## Building thermal mass as storage\nPrecooling commercial buildings by 1-2 degrees Celsius during high-solar midday hours shifts 20-40 percent of afternoon cooling load off the grid without comfort impact.",
+    "source": "ASHRAE Journal 2021",
+    "file": "demand_response.md"
+  },
+  {
+    "text": "## Ramp-rate management\nGrid operators typically limit plant ramp rates to 10 percent of nameplate capacity per minute to preserve frequency stability. When solar output drops sharply due to passing clouds, fast-start gas peakers or battery inverters must cover the shortfall within seconds.",
+    "source": "IEA Renewables Integration 2022",
+    "file": "grid_balancing.md"
+  },
+  {
+    "text": "## Reserve scheduling\nOperators hold spinning reserves of at least 3 percent of forecast solar output during daytime hours to absorb forecast error. If the day-ahead forecast shows low confidence, reserves are scaled up to 5-7 percent.",
+    "source": "NREL Technical Report TP-6A20-77318",
+    "file": "grid_balancing.md"
+  },
+  {
+    "text": "## Forecast-informed dispatch\nEconomic dispatch windows of 5 to 15 minutes allow operators to re-balance generation as short-term solar forecasts refine. Intraday market participation reduces curtailment by up to 30 percent on variable-irradiance days.",
+    "source": "IRENA Power System Flexibility 2018",
+    "file": "grid_balancing.md"
+  },
+  {
+    "text": "## Frequency response\nSolar inverters with grid-forming capability can provide synthetic inertia and fast frequency response, replacing functions traditionally handled by synchronous generators. Required droop setting is typically 4-5 percent.",
+    "source": "IEEE 1547-2018",
+    "file": "grid_balancing.md"
+  },
+  {
+    "text": "## Curtailment as last resort\nCurtailment of solar is used when transmission is congested or reserves are exhausted. Well-managed systems keep curtailment below 5 percent of annual solar generation.",
+    "source": "CAISO 2023 Annual Report",
+    "file": "grid_balancing.md"
+  },
+  {
+    "text": "## Geographic and technology diversification\nCombining solar from multiple sites 50-100 km apart smooths aggregate output by 20-40 percent versus a single site, because cloud transients rarely correlate across that distance. Pairing solar with wind further reduces variability.",
+    "source": "IEA Wind Task 36",
+    "file": "renewable_integration.md"
+  },
+  {
+    "text": "## Interconnection requirements\nGrid codes for utility-scale solar require low-voltage ride-through (LVRT), reactive power control, and remote telemetry. Plants above 5 MW typically must provide 15-minute real-time output telemetry to the system operator.",
+    "source": "FERC Order 842",
+    "file": "renewable_integration.md"
+  },
+  {
+    "text": "## Hosting capacity analysis\nFeeders have a solar hosting capacity determined by thermal limits, voltage rise, and protection coordination. Exceeding hosting capacity without mitigation causes voltage excursions above 1.05 per unit. Advanced inverter functions (volt-var, volt-watt) can raise hosting capacity by 30-60 percent.",
+    "source": "EPRI DER Hosting",
+    "file": "renewable_integration.md"
+  },
+  {
+    "text": "## Flexibility options ranking\nThe IEA ranks flexibility options by cost: demand response (lowest) < storage (short duration) < dispatchable thermal (mid duration) < long-duration storage and hydrogen (highest). Deploy in that order for least-cost integration.",
+    "source": "IEA World Energy Outlook 2023",
+    "file": "renewable_integration.md"
+  },
+  {
+    "text": "## Curtailment vs storage economics\nBelow roughly 15 percent annual curtailment, economic curtailment is typically cheaper than adding storage. Above 15 percent, storage is more cost-effective.",
+    "source": "NREL Storage Futures Study",
+    "file": "renewable_integration.md"
+  },
+  {
+    "text": "## Sizing guidance\nA practical battery sizing heuristic is 2 to 4 hours of storage at 50-80 percent of plant peak output. For a 1 MW peak solar plant, 0.5-0.8 MW / 2-4 MWh is a typical utility-scale pairing.",
+    "source": "NREL Storage Futures 2021",
+    "file": "storage_systems.md"
+  },
+  {
+    "text": "## Charge window optimization\nCharging is most efficient between 10:00 and 14:00 local time when irradiance is high and the plant would otherwise be exporting excess energy. Avoid charging past 80 percent state-of-charge to extend cycle life.",
+    "source": "IRENA Electricity Storage 2017",
+    "file": "storage_systems.md"
+  },
+  {
+    "text": "## Discharge scheduling\nDischarge the battery during the evening peak (17:00-21:00 typically) to shift solar energy to high-demand hours. This captures the highest time-of-use tariff differential and reduces grid stress during the duck curve ramp.",
+    "source": "LBNL Grid Energy Storage 2019",
+    "file": "storage_systems.md"
+  },
+  {
+    "text": "## Round-trip efficiency\nModern lithium-ion BESS achieve 85-92 percent round-trip efficiency. Factor efficiency losses into economic dispatch: a 90 percent RTE means 10 percent of stored solar is lost, which should be priced against direct export revenue.",
+    "source": "EIA Battery Storage 2023",
+    "file": "storage_systems.md"
+  },
+  {
+    "text": "## Cycle life and depth of discharge\nLimiting depth of discharge to 80 percent roughly doubles cycle life compared to 100 percent DoD. Over a 10-year horizon this can reduce LCOE of storage by 15-25 percent.",
+    "source": "Sandia Battery Testing Manual",
+    "file": "storage_systems.md"
+  },
+  {
+    "text": "## State of charge buffer for forecast error\nMaintain a 10-15 percent SoC buffer against next-day solar forecast uncertainty to ensure discharge commitments can be met on low-irradiance days.",
+    "source": "DOE Grid Storage Handbook",
+    "file": "storage_systems.md"
+  }
+]
