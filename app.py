@@ -264,6 +264,8 @@ with tab2:
     if "m2_report" not in st.session_state:
         st.session_state.m2_report = None
         st.session_state.m2_forecast = None
+    if "m2_chat" not in st.session_state:
+        st.session_state.m2_chat = []
 
     run_btn = st.button(
         "Generate Grid Optimization Report",
@@ -294,6 +296,7 @@ with tab2:
 
         st.session_state.m2_report = report
         st.session_state.m2_forecast = forecast
+        st.session_state.m2_chat = []
 
     report = st.session_state.m2_report
     forecast = st.session_state.m2_forecast
@@ -354,6 +357,38 @@ with tab2:
             mime="application/pdf",
             type="primary",
         )
+
+        st.markdown("---")
+        st.subheader("Ask the agent")
+        st.caption(
+            "Follow-up questions are answered using the forecast, the report above, "
+            "and the same RAG corpus. The agent will say so if a question is outside scope."
+        )
+
+        chat_container = st.container()
+        with chat_container:
+            for turn in st.session_state.m2_chat:
+                with st.chat_message(turn["role"]):
+                    st.markdown(turn["content"])
+
+        if st.session_state.m2_chat and st.button("Clear chat"):
+            st.session_state.m2_chat = []
+            st.rerun()
+
+        user_msg = st.chat_input("e.g. Why charge between 10:00 and 14:00?")
+        if user_msg:
+            from agent.chat import chat_response
+
+            with st.spinner("Thinking..."):
+                reply = chat_response(
+                    user_message=user_msg,
+                    history=st.session_state.m2_chat,
+                    forecast=forecast,
+                    report=report,
+                )
+            st.session_state.m2_chat.append({"role": "user", "content": user_msg})
+            st.session_state.m2_chat.append({"role": "assistant", "content": reply})
+            st.rerun()
 
 
 st.markdown("---")
