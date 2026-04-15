@@ -1,0 +1,307 @@
+% Milestone 2 Report - Solar Generation Forecasting and Grid Optimization
+% Compile: pdflatex -> bibtex -> pdflatex -> pdflatex
+
+\documentclass[journal,onecolumn,11pt]{IEEEtran}
+
+\IEEEoverridecommandlockouts
+
+\usepackage[numbers]{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{titlesec}
+
+\onehalfspacing
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+\definecolor{headingcolor}{RGB}{31, 78, 121}
+
+\titleformat{\section}
+  {\color{headingcolor}\Large\bfseries\sffamily}
+  {\thesection.}{0.6em}{}
+  [\vspace{0.2em}\color{headingcolor}\hrule height 1pt]
+
+\titleformat{\subsection}
+  {\color{headingcolor!85}\large\bfseries\sffamily}
+  {\thesubsection}{0.6em}{}
+
+\titleformat{\subsubsection}
+  {\color{headingcolor!75}\normalsize\bfseries\sffamily}
+  {\thesubsubsection}{0.5em}{}
+
+\titlespacing*{\section}{0pt}{2em}{1em}
+\titlespacing*{\subsection}{0pt}{1.4em}{0.6em}
+\titlespacing*{\subsubsection}{0pt}{1em}{0.4em}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  captionpos=b,
+  xleftmargin=1em,
+  xrightmargin=1em,
+  aboveskip=1em,
+  belowskip=1em
+}
+
+\begin{document}
+
+% ---------- TITLE ----------
+\title{An Agentic AI System for Solar Generation Forecasting and Grid Optimization Recommendations}
+
+\author{
+\IEEEauthorblockN{Ansh, Swarnim, Tanima, Tisha}
+}
+
+\maketitle
+
+% ---------- ABSTRACT ----------
+\begin{abstract}
+A short-term solar forecast on its own does not tell a grid operator what to do. The operator still has to decide how much reserve to hold, when to charge or discharge storage, and when to signal flexible demand. In this work we build on the Random Forest forecaster from Milestone~1 and wrap it in an agentic AI assistant that produces those decisions in a structured form. The assistant rolls the forecaster forward across a 24-hour horizon, flags low-output and high-variability windows, retrieves passages from a curated corpus of grid-management literature using FAISS, and then calls Google Gemini~2.5~Flash to draft a five-section optimization report. The language model is bound to a Pydantic schema so every run returns the same fields, and the prompt forbids it from inventing numbers, vendors, or regulations that are not in the inputs. The whole pipeline runs as a LangGraph state machine with five named nodes. On the Anikannal Plant~1 dataset the underlying forecaster reaches 17.26~kW MAE. End-to-end agent runs finish in under fifteen seconds. The application is deployed on Streamlit Cloud, supports PDF export of the report, and includes a chat interface for follow-up questions.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Solar forecasting, agentic AI, retrieval-augmented generation, LangGraph, large language models, grid optimization.
+\end{IEEEkeywords}
+
+% ---------- INTRODUCTION ----------
+\section{Introduction}
+
+Solar generation is intermittent. A plant that produces 1.2~MW at noon may drop to a fifth of that during an afternoon cloud pass, and the grid has to balance this in real time. Most forecasting literature stops at the prediction itself: a curve of expected kilowatts across the day. But a grid operator does not consume a curve, they consume decisions. How much reserve to hold. When to charge the battery. Which industrial customer to call for demand response.
+
+In Milestone~1 we trained a Random Forest on the Anikannal Plant~1 dataset and reached 17.26~kW mean absolute error, exposed through a Streamlit interface. In this report we extend that forecaster with an agentic AI layer. The layer reads the forecast, identifies the hours that will be risky for the operator, pulls relevant passages from a small corpus of grid-management literature, and asks Gemini~2.5~Flash to write a five-section optimization report.
+
+Our main contributions are:
+\begin{itemize}
+  \item An end-to-end agent built as a LangGraph state machine with five named nodes, which gives us explicit state management between the reasoning steps.
+  \item A lightweight FAISS-based retrieval layer over a hand-curated corpus of roughly twenty passages drawn from IEA, IRENA, NREL, and IEEE sources.
+  \item A schema-bound LLM call that returns a Pydantic-validated \texttt{GridReport} object, so the five-section contract is enforced by construction rather than by prompt engineering alone.
+  \item Two extensions on top of the base agent: a PDF export of the report (chosen extension), and a chat interface that lets the user ask follow-up questions against the same retrieval corpus.
+\end{itemize}
+
+Everything in the system runs on free-tier APIs and open-source libraries. The application is deployed on Streamlit Community Cloud.
+
+% ---------- RELATED WORK ----------
+\section{Related Work}
+
+\textbf{Solar forecasting.} There is a long line of work on short-term solar forecasting covering everything from ARIMA and exponential smoothing to ensemble trees and LSTMs. Yang \emph{et al.}~\citep{yang2018history} provide a broad survey. We picked Random Forest in Milestone~1 because it was accurate enough on our data, trains in seconds, and does not need an external weather forecast at inference time.
+
+\textbf{Agentic LLM workflows.} LangGraph~\citep{langgraph} models a multi-step LLM application as a directed graph of named nodes operating on a shared state. This is useful here because our pipeline has clearly separable stages (retrieve, reason, validate), and keeping them as distinct nodes makes the agent easier to debug than a single large prompt.
+
+\textbf{Retrieval-augmented generation.} RAG~\citep{lewis2020rag} reduces hallucination by grounding the LLM in retrieved documents. For this project we did not want a large web-scraped corpus; grid operations is a narrow domain and we preferred to hand-curate roughly twenty passages from reputable sources so we could vouch for every citation the agent emits.
+
+\textbf{Structured output.} The \texttt{with\_structured\_output} interface in \texttt{langchain-google-genai} binds the model to a Pydantic schema. This replaces the usual ``please respond in JSON with fields X, Y, Z'' prompt with a schema-enforced contract at the API level, and was the simplest way to guarantee that every run of the agent returns all five required sections.
+
+% ---------- METHODOLOGY ----------
+\section{Methodology}
+
+\subsection{Dataset}
+We use the Anikannal Solar Power Generation dataset (Plant~1)\footnote{\url{https://www.kaggle.com/datasets/anikannal/solar-power-generation-data}}, comprising approximately 34{,}000 generation records at fifteen-minute intervals and approximately 3{,}000 hourly weather sensor records over a 34-day window. The generation file provides AC and DC power; the weather file provides ambient temperature, module temperature, and irradiation. The two streams are joined using a time-aware merge (\texttt{pd.merge\_asof}), and rows where AC power is zero (night periods) are dropped to avoid biasing the regression target toward zero.
+
+\subsection{Milestone 1 Forecaster (recap)}
+The forecaster used downstream by the agent is the Random Forest model trained in Milestone~1. The feature vector has eight components: ambient temperature, module temperature, irradiation, hour of day, month, day of week, lag-1 AC power, and a three-period rolling mean of AC power. Both Linear Regression (with a \texttt{StandardScaler}) and Random Forest (100 trees, default hyperparameters) were trained on a chronological 80/20 split. Performance is summarized in Table~\ref{tab:m1_metrics}.
+
+\begin{table}[ht]
+\centering
+\caption{Milestone 1 forecasting performance on Anikannal Plant 1.}
+\label{tab:m1_metrics}
+\begin{tabular}{lcc}
+\toprule
+Model & MAE (kW) & RMSE (kW) \\
+\midrule
+Linear Regression & 17.33 & \textbf{32.09} \\
+Random Forest     & \textbf{17.26} & 32.45 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{24-Hour Iterative Forecast}
+The agent operates on a 24-point forecast curve rather than a single-hour prediction. At each hour $h$, we construct a feature vector using a preset hourly irradiation curve (parameterized by a weather pattern: sunny, partly cloudy, or overcast), a simple module-temperature model $T_{\text{mod}} = T_{\text{amb}} + 20 \cdot I$, and the autoregressive features rolled forward from the model's own previous predictions:
+\begin{equation}
+\text{lag}_1^{(h)} = \hat{y}^{(h-1)}, \quad
+\text{roll}_3^{(h)} = \tfrac{1}{3} \sum_{k=1}^{3} \hat{y}^{(h-k)}.
+\end{equation}
+Predictions are clipped to the physically meaningful range $[0, 1500]$ kW. The output is a \texttt{ForecastState} object containing the 24 hourly points, the peak, the total energy, the indices of low-output daytime hours (defined as hours $6 \leq h \leq 18$ where $\hat{y} < 0.2 \cdot \text{peak}$), and the high-variability windows --- contiguous spans where the hour-to-hour delta exceeds 30\% of peak.
+
+\subsection{Knowledge Corpus and FAISS Retrieval}
+The RAG corpus comprises four Markdown files (\texttt{grid\_balancing.md}, \texttt{storage\_systems.md}, \texttt{renewable\_integration.md}, \texttt{demand\_response.md}) holding approximately twenty short passages, each annotated with a \texttt{[Source: ...]} citation drawn from IEA, IRENA, NREL, IEEE, LBNL, EPRI, and FERC publications. Passages are embedded with the open-weights \texttt{sentence-transformers/all-MiniLM-L6-v2} encoder~\citep{reimers2019sentencebert} and indexed in a FAISS \texttt{IndexFlatIP}~\citep{johnson2019faiss} over normalized vectors, equivalent to cosine similarity. The index is built once and persisted to disk. At query time we retrieve the top-$k=4$ passages.
+
+\subsection{Agent Architecture}
+The agent is a LangGraph state machine over an \texttt{AgentState} TypedDict. Five nodes execute in sequence (Fig.~\ref{fig:graph}):
+
+\begin{enumerate}
+  \item \textbf{summarize\_forecast}: Generates a one-sentence natural-language summary of peak, total energy, and the daylight window. Pure Python, no LLM call.
+  \item \textbf{identify\_variability}: Produces human-readable notes describing low-output hours and high-ramp windows from the forecast statistics.
+  \item \textbf{retrieve\_guidelines\_node}: Issues a query to FAISS constructed from the forecast peak, total, and variability flags; returns six retrieved passages with their sources.
+  \item \textbf{draft\_recommendations}: The single LLM call. Sends a prompt containing a JSON snapshot of the forecast, the variability notes, and the formatted retrieved guidelines, and asks Gemini~2.5~Flash to emit a \texttt{GridReport}. The LLM is bound to the Pydantic schema via \texttt{with\_structured\_output}.
+  \item \textbf{format\_structured\_output}: Passes the validated \texttt{GridReport} through to the final state. If the LLM call failed, a guideline-only fallback report is returned instead so the user always receives a structured artifact.
+\end{enumerate}
+
+\begin{figure}[ht]
+\centering
+\fbox{\parbox{0.45\textwidth}{\centering
+\textbf{START} $\rightarrow$ summarize $\rightarrow$ variability $\rightarrow$ retrieve $\rightarrow$ draft (Gemini~2.5~Flash) $\rightarrow$ format $\rightarrow$ \textbf{END}
+}}
+\caption{LangGraph state machine for the grid optimization agent. Only the \emph{draft} node calls the LLM; all other nodes are deterministic Python that prepare or validate state.}
+\label{fig:graph}
+\end{figure}
+
+\subsection{Anti-Hallucination Prompt Strategy}
+The system preamble explicitly instructs the model that ``every operational claim must be grounded in either the forecast numbers provided or the retrieved guidelines'', forbids inventing tariff values, vendor names, device specifications, or regulatory citations not present in the inputs, and requires the model to mark uncertainty (e.g., ``confidence low'') rather than invent specifics. The drafting prompt enumerates the six target fields one by one, asks for 3--5 bullet items per recommendation list, and requires that the \texttt{references} field draw only from the \texttt{SOURCE} field of the retrieved guidelines. Combined with schema-bound output, this forces the model into a narrow operating envelope.
+
+\subsection{Conversational Follow-up}
+After report generation, the user can ask follow-up questions through a chat interface. Each user message triggers a fresh FAISS retrieval (so the context is tailored to the specific question), and the LLM is invoked with the system rules, a snapshot of the forecast and the report, the freshly retrieved guidelines, the conversation history, and the new question. The chat layer reuses the same anti-hallucination rules; if a question is outside the scope of the inputs, the model is instructed to say so rather than fabricate an answer.
+
+\subsection{PDF Export (Extension)}
+We chose PDF export of the grid optimization report as the Milestone~2 extension. The exporter (\texttt{agent/pdf\_export.py}) uses \texttt{reportlab.platypus} to render a styled document containing the title, forecast metadata, an embedded matplotlib chart of the 24-hour curve, and all five report sections. The PDF is delivered through a Streamlit \texttt{st.download\_button}.
+
+% ---------- RESULTS ----------
+\section{Results}
+
+\subsection{Forecasting Accuracy}
+The Random Forest reached 17.26~kW MAE on the held-out split (Table~\ref{tab:m1_metrics}), which is roughly 1--5\% of the plant's observed peak. Linear Regression was close behind at 17.33~kW MAE but slightly worse on RMSE. We use the Random Forest as the agent's forecaster because the MAE gap is real even if small, and because the RF is more robust to the out-of-distribution inputs the agent feeds it during iterative forecasting.
+
+\subsection{End-to-End Agent Run}
+Fig.~\ref{fig:ui} shows the deployed Grid Optimization Agent tab. The user picks a forecast date, a weather pattern (sunny, partly cloudy, or overcast), an ambient temperature, and an optional seed lag, and clicks \textsf{Generate Grid Optimization Report}. The app then streams progress through the five agent nodes and renders the resulting report in place, followed by a PDF download button and a chat box for follow-up questions.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{ui_screenshot.png}
+\caption{Streamlit UI for the agentic assistant. The Grid Optimization Agent tab accepts a forecast date, weather pattern, ambient temperature, and seed lag; the first tab preserves the Milestone~1 forecasting interface unchanged.}
+\label{fig:ui}
+\end{figure}
+
+\subsection{Sample Output}
+To illustrate what the agent actually returns, the following three bullets are taken verbatim from a run on an overcast forecast day. Each bullet cites a source that FAISS retrieved during that run:
+
+\begin{itemize}
+  \item \textbf{Storage:} Target charge window 10:00--14:00, discharge 17:00--21:00; cap SoC at 80\% to preserve cycle life. [Source: NREL TP-6A20-77318]
+  \item \textbf{Grid balancing:} Hold spinning reserves of 3--7\% of forecast solar during daylight hours when day-ahead confidence is low. [Source: IEA Renewables Integration 2022]
+  \item \textbf{Utilization:} Signal demand-response aggregators day-ahead so flexible load can shift into midday surplus hours. [Source: IRENA Power System Flexibility 2018]
+\end{itemize}
+
+Each bullet is tied either to a forecast number (SoC targets, charge windows) or to a named source in the corpus.
+
+\subsection{Latency}
+End-to-end, an agent run takes under fifteen seconds in our tests. Almost all of that time is the single Gemini call; FAISS retrieval over the twenty-passage corpus is sub-millisecond and the other four nodes are pure Python.
+
+\subsection{Grounding}
+We inspected several generated reports by hand. In every case the \texttt{references} field matched names that FAISS actually returned on that run, and the recommendation bullets either cited specific forecast numbers (peak kW, total kWh, or specific hours of concern) or named one of the guideline sources. Because the LLM output is schema-bound, we never saw a malformed response. During early testing the free-tier quota briefly ran out; the fallback report kicked in and the UI still rendered a complete five-section document, which is the behavior we wanted.
+
+% ---------- DISCUSSION ----------
+\section{Discussion}
+
+\subsection{Why a Curated Corpus}
+We considered scraping a larger corpus from the open web but decided against it. Grid operations is a narrow domain, and the decisions the agent has to justify (reserves, ramping, charge windows, demand response) are covered well by about twenty passages from IEA, NREL, and IEEE. Curating by hand also means every source the agent cites is one we have read ourselves, which matters when the end-user is being asked to take operational action on the report.
+
+\subsection{Why LangGraph}
+We could have written the agent as a single big prompt. It would have been fewer files. But a single prompt is a black box when something goes wrong, and we wanted to be able to unit-test the variability detector without incurring a Gemini call. Splitting into five named nodes with a typed shared state solved both. It also made the UI progress stream honest: the \texttt{st.status} block actually shows each node completing, rather than faking it.
+
+\subsection{Limitations}
+The 24-hour forecast is autoregressive: we feed the model's own predictions back in as the lag and rolling-mean features. If a single hour is off, the error propagates. We clip to $[0, 1500]$~kW to contain this, but a sequence model trained directly for multi-step prediction would be a cleaner solution. The agent also uses a fixed irradiation curve per weather pattern, which is fine for a demo but not for production; hooking into a real NWP feed would be the obvious next step. Finally, our grounding is enforced by prompt rather than mechanically verified. The LLM is told not to invent sources, and in practice it does not, but a truly robust system would check every citation in the output against the retrieved corpus after the fact.
+
+% ---------- CONCLUSION ----------
+\section{Conclusion}
+
+We built an agentic AI layer on top of the Milestone~1 solar forecaster. The agent reads a 24-hour Random Forest forecast, retrieves passages from a small curated corpus via FAISS, and asks Gemini~2.5~Flash to draft a five-section grid-optimization report. LangGraph gives us explicit state management across the five nodes, the schema-bound LLM call enforces the five-section output contract, and the anti-hallucination prompt keeps the recommendations tied to the forecast numbers and the retrieved guidelines. On top of the base agent we added two things: a PDF export of the report (the chosen extension) and a chat interface for follow-up questions. The full system is deployed on Streamlit Cloud. Only free-tier APIs and open-source libraries are used. The Milestone~1 forecasting tab is preserved exactly as it was, so the same application now satisfies both milestones of the project.
+
+% ---------- REFERENCES ----------
+\bibliographystyle{IEEEtranN}
+\bibliography{references}
+
+% ---------- APPENDIX ----------
+\appendix
+
+\section{GitHub Repository Information}
+
+\subsection{Repository and Hosted Application}
+The complete source code, trained models, knowledge corpus, and documentation are available at:
+
+\begin{center}
+\textbf{\url{https://github.com/ace-tk/Solar-Power-Generation-Model}}
+\end{center}
+
+The live application is deployed on Streamlit Community Cloud at:
+
+\begin{center}
+\textbf{\url{https://solar-power-generation-model-4hhrmvg6yyguffdtcwghkz.streamlit.app}}
+\end{center}
+
+\subsection{Repository Structure}
+
+\begin{lstlisting}[caption={Project repository layout.}]
+Solar-Power-Generation-Model/
+|-- app.py                  # Streamlit UI (both tabs)
+|-- requirements.txt        # Python dependencies
+|-- README.md               # Project documentation
+|-- .env.example            # Template for GOOGLE_API_KEY
+|
+|-- agent/                  # Milestone 2 package
+|   |-- schemas.py          # Pydantic state + GridReport
+|   |-- forecaster.py       # 24h iterative RF forecast
+|   |-- rag.py              # FAISS retrieval
+|   |-- prompts.py          # Anti-hallucination templates
+|   |-- nodes.py            # LangGraph node functions
+|   |-- graph.py            # StateGraph wiring
+|   |-- chat.py             # Follow-up chat layer
+|   |-- pdf_export.py       # reportlab PDF rendering
+|
+|-- knowledge/              # RAG source corpus
+|   |-- grid_balancing.md
+|   |-- storage_systems.md
+|   |-- renewable_integration.md
+|   |-- demand_response.md
+|
+|-- models/                 # Trained ML artifacts
+|   |-- linear_model.pkl
+|   |-- random_forest_model.pkl
+|   |-- scaler.pkl
+|   |-- feature_list.pkl
+|   |-- metrics.json
+|   |-- rag_index.faiss     # built on first agent run
+|   |-- rag_corpus.json
+|
+|-- scripts/
+|   |-- train_model.py      # Model training pipeline
+|
+|-- docs/
+|   |-- report.tex          # Milestone 1 report
+|   |-- report2.tex         # Milestone 2 report (this document)
+\end{lstlisting}
+
+\subsection{Description of Key Components}
+\begin{itemize}
+  \item \textbf{app.py}: Streamlit application with two tabs --- the Milestone~1 forecasting interface and the Milestone~2 agentic assistant. Handles secrets, model loading, and the chat UI.
+  \item \textbf{agent/}: All Milestone~2 logic. The package is import-isolated from the Milestone~1 training pipeline so changes to one cannot break the other.
+  \item \textbf{knowledge/}: Source corpus for RAG. Each Markdown file holds H2-sectioned passages with explicit source citations.
+  \item \textbf{models/}: Persisted artifacts. The FAISS index and corpus manifest are built lazily on first agent invocation; the ML \texttt{.pkl} files are produced by the training script.
+  \item \textbf{scripts/train\_model.py}: Reproducible training pipeline producing all model artifacts and the \texttt{metrics.json} consumed by the UI.
+  \item \textbf{requirements.txt}: Python dependencies (Streamlit, scikit-learn, LangGraph, langchain-google-genai, faiss-cpu, sentence-transformers, reportlab, etc.).
+\end{itemize}
+
+\subsection{Running the System}
+
+\begin{lstlisting}[caption={Local setup.}]
+git clone <repo-url>
+cd Solar-Power-Generation-Model
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+echo "GOOGLE_API_KEY=<your_key>" > .env
+streamlit run app.py
+\end{lstlisting}
+
+A Google Gemini API key (free tier) is required for the agent tab; the Milestone~1 forecasting tab works without one.
+
+\end{document}
